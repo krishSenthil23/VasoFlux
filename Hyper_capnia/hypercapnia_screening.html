@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hypercapnia Screening</title>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f0f0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh}
+
+/* Progress */
+.prog-bar{position:fixed;top:0;left:0;right:0;z-index:100;padding:14px 32px 10px;background:rgba(15,15,15,0.95);border-bottom:1px solid #1e1e1e;backdrop-filter:blur(8px)}
+.prog-label{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px}
+.prog-track{height:3px;background:#1e1e1e;border-radius:2px;overflow:hidden}
+.prog-fill{height:100%;background:#378ADD;border-radius:2px;transition:width .5s ease}
+.prog-dots{display:flex;justify-content:space-between;margin-top:7px}
+.dot{width:7px;height:7px;border-radius:50%;background:#1e1e1e;transition:background .3s}
+.dot.active{background:#378ADD}
+.dot.done{background:#1D9E75}
+
+/* Layout */
+.page{display:none;min-height:100vh;padding:88px 20px 48px;max-width:760px;margin:0 auto}
+.page.on{display:block}
+
+/* Card */
+.card{background:#1a1a1a;border:1px solid #242424;border-radius:14px;padding:28px;margin-bottom:18px}
+
+/* Type */
+h1{font-size:28px;font-weight:700;margin-bottom:6px}
+h2{font-size:20px;font-weight:600;margin-bottom:6px}
+.sub{color:#666;font-size:15px;margin-bottom:28px}
+.label-xs{font-size:11px;color:#555;text-transform:uppercase;letter-spacing:1px}
+
+/* Inputs */
+.inp{width:100%;background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:13px 15px;color:#fff;font-size:15px;outline:none;transition:border-color .2s}
+.inp:focus{border-color:#378ADD}
+.inp-wrap{margin-top:14px}
+
+/* Buttons */
+.btn{padding:12px 28px;border-radius:9px;border:none;font-size:15px;font-weight:600;cursor:pointer;transition:all .18s;display:inline-block}
+.btn-blue{background:#378ADD;color:#fff}
+.btn-blue:hover:not(:disabled){background:#2a6db8;transform:translateY(-1px)}
+.btn-blue:disabled{background:#1a2a3a;color:#3a5a7a;cursor:not-allowed}
+.btn-gray{background:#222;color:#888;border:1px solid #2a2a2a}
+.btn-gray:hover{background:#2a2a2a;color:#bbb}
+
+/* Radio */
+.q-block{margin-bottom:22px}
+.q-text{font-size:15px;font-weight:500;color:#ddd;margin-bottom:10px}
+.radio-row{display:flex;gap:8px;flex-wrap:wrap}
+.r-opt{flex:1;min-width:90px}
+.r-opt input{display:none}
+.r-opt label{display:block;padding:9px 12px;background:#111;border:1px solid #2a2a2a;border-radius:7px;cursor:pointer;text-align:center;font-size:13px;color:#888;transition:all .18s}
+.r-opt input:checked+label{background:rgba(55,138,221,.15);border-color:#378ADD;color:#378ADD}
+.r-opt label:hover{border-color:#333;color:#bbb}
+
+/* Camera */
+.cam-wrap{position:relative;width:100%;max-width:480px;margin:0 auto 20px;border-radius:12px;overflow:hidden;background:#111;aspect-ratio:4/3}
+#video{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1)}
+#canvas{position:absolute;top:0;left:0;width:100%;height:100%;transform:scaleX(-1)}
+.ear-row{text-align:center;font-size:13px;color:#555;margin-bottom:14px}
+.ear-val{color:#378ADD;font-weight:600}
+
+/* Timer SVG */
+.timer-svg{display:block;margin:0 auto 14px}
+
+/* Progress inline */
+.prog-inline{height:5px;background:#1a1a1a;border-radius:3px;overflow:hidden;margin:10px 0}
+.prog-inline-fill{height:100%;background:#378ADD;border-radius:3px;transition:width .3s}
+
+/* Waveform */
+.waveform{height:72px;background:#111;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:3px;padding:8px;margin:16px 0}
+.wbar{width:4px;background:#378ADD;border-radius:2px;transition:height .08s ease}
+
+/* Recording indicator */
+.rec-row{display:flex;align-items:center;gap:8px;justify-content:center;margin:10px 0}
+.rec-dot{width:9px;height:9px;border-radius:50%;background:#E24B4A;animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Countdown big */
+.big-count{font-size:80px;font-weight:900;text-align:center;color:#378ADD;margin:16px 0;line-height:1}
+
+/* Stroop */
+.stroop-word{font-size:72px;font-weight:700;text-align:center;margin:32px 0;letter-spacing:2px;transition:none!important;animation:none!important}
+.key-guide{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+.kbadge{padding:7px 14px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:7px;font-size:13px}
+#stroopFeedback{position:fixed;top:0;left:0;right:0;bottom:0;opacity:0;pointer-events:none;transition:opacity .1s;z-index:50}
+
+/* Results */
+.sbar-wrap{margin-bottom:14px}
+.sbar-top{display:flex;justify-content:space-between;margin-bottom:5px;font-size:13px}
+.sbar-track{height:10px;background:#1a1a1a;border-radius:5px;overflow:hidden}
+.sbar-fill{height:100%;border-radius:5px;transition:width 1s ease,background 1s ease}
+.gauge-wrap{text-align:center;margin:28px 0 16px}
+.risk-text{font-size:32px;font-weight:700;margin:12px 0 8px}
+.risk-msg{color:#888;font-size:15px;max-width:380px;margin:0 auto 28px}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+
+/* Utility */
+.tc{text-align:center}
+.mt12{margin-top:12px}
+.mt20{margin-top:20px}
+.mt28{margin-top:28px}
+.warn-box{background:rgba(239,159,39,.08);border:1px solid rgba(239,159,39,.25);border-radius:8px;padding:14px;color:#EF9F27;font-size:14px;margin:14px 0}
+.ok-box{background:rgba(29,158,117,.08);border:1px solid rgba(29,158,117,.25);border-radius:8px;padding:14px;color:#1D9E75;font-size:14px;text-align:center;margin:14px 0}
+.spin{border:3px solid #1e1e1e;border-top:3px solid #378ADD;border-radius:50%;width:30px;height:30px;animation:spin .7s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.result-table{background:#111;border-radius:10px;padding:16px;margin:14px 0}
+.result-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1a1a1a;font-size:14px}
+.result-row:last-child{border-bottom:none}
+.rv{color:#378ADD;font-weight:600;text-align:right;max-width:55%}
+.api-box{background:rgba(55,138,221,.05);border:1px solid rgba(55,138,221,.18);border-radius:8px;padding:14px;margin-bottom:18px}
+.api-box label{font-size:12px;color:#666;display:block;margin-bottom:7px}
+.big-inst{font-size:24px;font-weight:700;text-align:center;margin:24px 0 10px;line-height:1.3}
+.head-ind{display:inline-block;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:1.5px;transition:all .3s}
+.head-ind.upright{background:rgba(29,158,117,.15);color:#1D9E75;border:1px solid rgba(29,158,117,.3)}
+.head-ind.drooping{background:rgba(226,75,74,.15);color:#E24B4A;border:1px solid rgba(226,75,74,.3)}
+.head-ind.calibrating{background:rgba(55,138,221,.1);color:#555;border:1px solid #2a2a2a}
+</style>
+</head>
+<body>
+
+<!-- Progress bar -->
+<div class="prog-bar">
+  <div class="prog-label" id="progLabel">Step 1 of 5 — Symptom Survey</div>
+  <div class="prog-track"><div class="prog-fill" id="progFill" style="width:20%"></div></div>
+  <div class="prog-dots">
+    <div class="dot active" id="d1"></div>
+    <div class="dot" id="d2"></div>
+    <div class="dot" id="d3"></div>
+    <div class="dot" id="d4"></div>
+    <div class="dot" id="d5"></div>
+  </div>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page on" id="page1">
+  <div class="card">
+    <h1>Hypercapnia Screening</h1>
+    <p class="sub">Early risk assessment for COPD patients</p>
+    <div class="label-xs">Patient Name</div>
+    <div class="inp-wrap"><input class="inp" id="patName" type="text" placeholder="Enter full name…" oninput="chk1()"></div>
+  </div>
+  <div class="card">
+    <h2>How are you feeling right now?</h2>
+    <p class="sub">Please answer honestly</p>
+    <div class="q-block">
+      <div class="q-text">1. Do you have a headache?</div>
+      <div class="radio-row">
+        <div class="r-opt"><input type="radio" name="q1" id="q1a" value="0" onchange="chk1()"><label for="q1a">No</label></div>
+        <div class="r-opt"><input type="radio" name="q1" id="q1b" value="40" onchange="chk1()"><label for="q1b">Mild</label></div>
+        <div class="r-opt"><input type="radio" name="q1" id="q1c" value="100" onchange="chk1()"><label for="q1c">Severe</label></div>
+      </div>
+    </div>
+    <div class="q-block">
+      <div class="q-text">2. How tired do you feel?</div>
+      <div class="radio-row">
+        <div class="r-opt"><input type="radio" name="q2" id="q2a" value="0" onchange="chk1()"><label for="q2a">Normal</label></div>
+        <div class="r-opt"><input type="radio" name="q2" id="q2b" value="40" onchange="chk1()"><label for="q2b">More than usual</label></div>
+        <div class="r-opt"><input type="radio" name="q2" id="q2c" value="100" onchange="chk1()"><label for="q2c">Exhausted</label></div>
+      </div>
+    </div>
+    <div class="q-block">
+      <div class="q-text">3. Are you feeling confused or foggy?</div>
+      <div class="radio-row">
+        <div class="r-opt"><input type="radio" name="q3" id="q3a" value="0" onchange="chk1()"><label for="q3a">No</label></div>
+        <div class="r-opt"><input type="radio" name="q3" id="q3b" value="60" onchange="chk1()"><label for="q3b">Slightly</label></div>
+        <div class="r-opt"><input type="radio" name="q3" id="q3c" value="100" onchange="chk1()"><label for="q3c">Very confused</label></div>
+      </div>
+    </div>
+    <div class="q-block">
+      <div class="q-text">4. Are you experiencing shortness of breath?</div>
+      <div class="radio-row">
+        <div class="r-opt"><input type="radio" name="q4" id="q4a" value="0" onchange="chk1()"><label for="q4a">No</label></div>
+        <div class="r-opt"><input type="radio" name="q4" id="q4b" value="50" onchange="chk1()"><label for="q4b">Mild</label></div>
+        <div class="r-opt"><input type="radio" name="q4" id="q4c" value="100" onchange="chk1()"><label for="q4c">Severe</label></div>
+      </div>
+    </div>
+    <div class="q-block">
+      <div class="q-text">5. Do your lips or fingertips look bluish?</div>
+      <div class="radio-row">
+        <div class="r-opt"><input type="radio" name="q5" id="q5a" value="0" onchange="chk1()"><label for="q5a">No</label></div>
+        <div class="r-opt"><input type="radio" name="q5" id="q5b" value="50" onchange="chk1()"><label for="q5b">Unsure</label></div>
+        <div class="r-opt"><input type="radio" name="q5" id="q5c" value="100" onchange="chk1()"><label for="q5c">Yes</label></div>
+      </div>
+    </div>
+    <div class="q-block">
+      <div class="q-text">6. How long since your last COPD episode?</div>
+      <div class="radio-row">
+        <div class="r-opt"><input type="radio" name="q6" id="q6a" value="0" onchange="chk1()"><label for="q6a">Over a month</label></div>
+        <div class="r-opt"><input type="radio" name="q6" id="q6b" value="40" onchange="chk1()"><label for="q6b">Within a month</label></div>
+        <div class="r-opt"><input type="radio" name="q6" id="q6c" value="100" onchange="chk1()"><label for="q6c">Within a week</label></div>
+      </div>
+    </div>
+    <button class="btn btn-blue" id="p1next" disabled>Next →</button>
+  </div>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" id="page2">
+  <div class="card">
+    <h1>Drowsiness Assessment</h1>
+    <p class="sub">Look at the camera naturally for 30 seconds</p>
+  </div>
+  <div class="card" id="camCard">
+    <div class="cam-wrap">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="canvas"></canvas>
+    </div>
+    <div class="ear-row">EAR: <span class="ear-val" id="earVal">—</span> &nbsp;|&nbsp; Blinks: <span class="ear-val" id="blinkDisp">0</span></div>
+    <div class="ear-row">Head position: <span class="head-ind calibrating" id="headStatus">WAITING</span></div>
+    <svg class="timer-svg" width="110" height="110" viewBox="0 0 110 110">
+      <circle cx="55" cy="55" r="46" fill="none" stroke="#1e1e1e" stroke-width="8"/>
+      <circle cx="55" cy="55" r="46" fill="none" stroke="#378ADD" stroke-width="8"
+        stroke-dasharray="289" stroke-dashoffset="0"
+        stroke-linecap="round" transform="rotate(-90 55 55)" id="timerArc"
+        style="transition:stroke-dashoffset 1s linear"/>
+      <text x="55" y="55" text-anchor="middle" dy=".35em" fill="#fff" font-size="24" font-weight="700" id="timerTxt">30</text>
+    </svg>
+    <div class="prog-inline"><div class="prog-inline-fill" id="monProg" style="width:0%"></div></div>
+    <div id="camStatus" class="tc" style="color:#555;font-size:13px;margin:10px 0">Initializing camera…</div>
+    <div id="camDone" class="ok-box" style="display:none">✓ Monitoring complete</div>
+    <div class="mt20"><button class="btn btn-blue" id="p2next" disabled onclick="goP3()">Next →</button></div>
+  </div>
+  <div class="card" id="noCamCard" style="display:none">
+    <div class="warn-box">Camera not available. A default drowsiness score will be used.</div>
+    <p style="color:#555;font-size:14px;margin-bottom:18px">Default score: 45/100</p>
+    <button class="btn btn-gray" onclick="skipDrowsy()">Skip This Test</button>
+  </div>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" id="page3">
+  <div class="card">
+    <h1>Speech Motor Test</h1>
+    <p class="sub">15 second rapid syllable repetition assessment</p>
+  </div>
+  <div class="card">
+    <div class="big-inst">Say PATAKA as fast as you can for 15 seconds</div>
+    <p class="tc" style="color:#555;margin-bottom:20px">Press the button below when ready</p>
+
+    <div id="ptIdle" style="display:block;text-align:center">
+      <button class="btn btn-blue" onclick="startPt()">Start Recording</button>
+    </div>
+    <div id="ptCountdown" style="display:none">
+      <div class="big-count" id="ptNum">3</div>
+    </div>
+    <div id="ptRec" style="display:none">
+      <div class="rec-row"><div class="rec-dot"></div><span style="color:#E24B4A;font-size:13px;font-weight:600">RECORDING</span></div>
+      <div class="waveform" id="waveform"></div>
+      <div class="prog-inline"><div class="prog-inline-fill" id="recProg" style="width:0%"></div></div>
+      <div style="text-align:center;font-size:12px;color:#555;margin:4px 0">Signal: <span id="rmsDisp" style="color:#378ADD">0.000</span> &nbsp;|&nbsp; Peaks: <span id="peakDisp" style="color:#378ADD;font-weight:600">0</span></div>
+    </div>
+    <div id="ptAnalyzing" style="display:none">
+      <div style="padding:24px;text-align:center">
+        <div class="spin"></div>
+        <p style="color:#555;margin-top:14px;font-size:14px">Processing recording…</p>
+      </div>
+    </div>
+    <audio id="audioPlayer" controls style="display:none;width:100%;margin:14px 0;border-radius:8px"></audio>
+    <div id="ptResult" style="display:none">
+      <div class="result-table">
+        <div class="result-row"><span>Rate per second</span><span class="rv" id="ptRate">—</span></div>
+        <div class="result-row"><span>Overall score</span><span class="rv" id="ptClarity">—</span></div>
+        <div class="result-row"><span>Assessment</span><span class="rv" id="ptAssess" style="font-size:12px">—</span></div>
+      </div>
+      <button class="btn btn-blue mt12" onclick="goP4()">Next →</button>
+    </div>
+    <div id="noMicCard" style="display:none">
+      <div class="warn-box">Microphone not available. A default score will be used.</div>
+      <button class="btn btn-gray" onclick="skipPt()">Skip This Test</button>
+    </div>
+    <div id="retryCard" style="display:none">
+      <div class="warn-box" id="retryMsg">Recording failed. Please try again.</div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+        <button class="btn btn-blue" onclick="retryPt()">Try Again</button>
+        <button class="btn btn-gray" onclick="skipPt()">Skip This Test</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 4 -->
+<div class="page" id="page4">
+  <div class="card">
+    <h1>Attention Test</h1>
+    <p class="sub">Cognitive processing speed assessment</p>
+  </div>
+  <div class="card" id="stInstr">
+    <p style="color:#888;margin-bottom:20px">A color word will appear in a different ink. Press the key for the <strong style="color:#fff">COLOR OF THE INK</strong>, not the word.</p>
+    <div class="stroop-word" style="color:#378ADD">RED</div>
+    <p class="tc" style="color:#888;margin-bottom:20px">The word says RED but the ink is BLUE — press <strong style="color:#fff">B</strong></p>
+    <div class="key-guide">
+      <div class="kbadge"><strong style="color:#E24B4A">R</strong> = Red</div>
+      <div class="kbadge"><strong style="color:#1D9E75">G</strong> = Green</div>
+      <div class="kbadge"><strong style="color:#378ADD">B</strong> = Blue</div>
+    </div>
+    <p class="tc mt20" style="color:#555;font-size:14px">Starting in <span id="stCD">5</span> seconds…</p>
+  </div>
+  <div class="card" id="stTrial" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <span class="label-xs">Trial <span id="trialNum">1</span> of 20</span>
+      <div class="key-guide" style="margin:0;gap:8px">
+        <div class="kbadge" style="padding:4px 10px;font-size:12px"><strong style="color:#E24B4A">R</strong></div>
+        <div class="kbadge" style="padding:4px 10px;font-size:12px"><strong style="color:#1D9E75">G</strong></div>
+        <div class="kbadge" style="padding:4px 10px;font-size:12px"><strong style="color:#378ADD">B</strong></div>
+      </div>
+    </div>
+    <div class="stroop-word" id="stWord">RED</div>
+    <div class="prog-inline">
+      <div id="trialBar" style="height:100%;background:#EF9F27;border-radius:3px;width:100%"></div>
+    </div>
+  </div>
+  <div class="card" id="stSummary" style="display:none">
+    <h2 style="margin-bottom:16px">Test Complete</h2>
+    <div class="result-table">
+      <div class="result-row"><span>Correct answers</span><span class="rv" id="stCorrect">—</span></div>
+      <div class="result-row"><span>Avg response time</span><span class="rv" id="stAvgMs">—</span></div>
+      <div class="result-row"><span>Accuracy</span><span class="rv" id="stAcc">—</span></div>
+    </div>
+    <button class="btn btn-blue mt20" onclick="goP5()">View Results →</button>
+  </div>
+</div>
+<div id="stroopFeedback"></div>
+
+<!-- PAGE 5 -->
+<div class="page" id="page5">
+  <div class="card">
+    <h1>Assessment Complete</h1>
+    <p class="sub" id="patDisp">Results</p>
+  </div>
+  <div class="card">
+    <h2 style="margin-bottom:20px">Score Breakdown</h2>
+    <div class="sbar-wrap">
+      <div class="sbar-top"><span>Symptom Score</span><span id="lbl1">0/100</span></div>
+      <div class="sbar-track"><div class="sbar-fill" id="bar1" style="width:0%"></div></div>
+    </div>
+    <div class="sbar-wrap">
+      <div class="sbar-top"><span>Drowsiness Score</span><span id="lbl2">0/100</span></div>
+      <div class="sbar-track"><div class="sbar-fill" id="bar2" style="width:0%"></div></div>
+    </div>
+    <div class="sbar-wrap">
+      <div class="sbar-top"><span>Speech Score</span><span id="lbl3">0/100</span></div>
+      <div class="sbar-track"><div class="sbar-fill" id="bar3" style="width:0%"></div></div>
+    </div>
+    <div class="sbar-wrap">
+      <div class="sbar-top"><span>Stroop Score</span><span id="lbl4">0/100</span></div>
+      <div class="sbar-track"><div class="sbar-fill" id="bar4" style="width:0%"></div></div>
+    </div>
+  </div>
+  <div class="card tc">
+    <h2 style="margin-bottom:20px">Overall Risk Assessment</h2>
+    <svg viewBox="0 0 220 130" width="220" height="130" style="display:block;margin:0 auto">
+      <path d="M 20 120 A 90 90 0 0 1 200 120" fill="none" stroke="#1a1a1a" stroke-width="16" stroke-linecap="round"/>
+      <path d="M 20 120 A 90 90 0 0 1 200 120" fill="none" stroke="#378ADD" stroke-width="16" stroke-linecap="round"
+        stroke-dasharray="283" stroke-dashoffset="283" id="gaugeArc"/>
+      <text x="110" y="108" text-anchor="middle" fill="#fff" font-size="42" font-weight="700" id="gaugeNum">0</text>
+      <text x="110" y="126" text-anchor="middle" fill="#444" font-size="12">Risk Score</text>
+    </svg>
+    <div class="risk-text" id="riskLvl">—</div>
+    <div class="risk-msg" id="riskMsg">—</div>
+    <div class="btn-row">
+      <button class="btn btn-gray" onclick="doExport()">Export CSV</button>
+      <button class="btn btn-blue" onclick="resetApp()">New Session</button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('p1next').addEventListener('click', goPage2)
+})
+
+// ── STATE ──────────────────────────────────────────────────────────────
+let S = {symptom_score:0,drowsiness_score:0,pataka_score:0,stroop_score:0,final_risk:0,patient_name:''}
+const PRESET = {symptom_score:35,drowsiness_score:45,pataka_score:60,stroop_score:40}
+const STEP_LABELS = ['Symptom Survey','Drowsiness Assessment','Speech Motor Test','Attention Test','Results']
+
+function clamp(v){return Math.max(0,Math.min(100,v))}
+function avg(a){return a.length?a.reduce((x,y)=>x+y,0)/a.length:0}
+
+// ── NAV ───────────────────────────────────────────────────────────────
+function showPage(n){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'))
+  document.getElementById('page'+n).classList.add('on')
+  document.getElementById('progFill').style.width=(n/5*100)+'%'
+  document.getElementById('progLabel').textContent='Step '+n+' of 5 — '+STEP_LABELS[n-1]
+  for(let i=1;i<=5;i++){
+    const d=document.getElementById('d'+i)
+    d.className='dot'+(i<n?' done':i===n?' active':'')
+  }
+  window.scrollTo(0,0)
+}
+
+// ── PAGE 1 ────────────────────────────────────────────────────────────
+function chk1(){
+  const name=document.getElementById('patName').value.trim()
+  const all=['q1','q2','q3','q4','q5','q6'].every(n=>document.querySelector('input[name="'+n+'"]:checked'))
+  const btn=document.getElementById('p1next')
+  btn.disabled=!(name&&all)
+}
+function goPage2(){
+  S.patient_name=document.getElementById('patName').value.trim()
+  const w=[.10,.10,.20,.20,.25,.15]
+  S.symptom_score=['q1','q2','q3','q4','q5','q6'].reduce((acc,n,i)=>{
+    return acc+parseFloat(document.querySelector('input[name="'+n+'"]:checked').value)*w[i]
+  },0)
+  showPage(2)
+  initCam()
+}
+
+// ── PAGE 2 ────────────────────────────────────────────────────────────
+const BLINK_THRESHOLD=0.21,MIN_BLINK_DURATION_MS=50
+
+let faceMesh,camObj,monActive=false,monTimer,monSec=0
+let earReadings=[],blinkCount=0,blinkOn=false,blinkStartTime=0,blinkDurations=[],totalEyesClosedMs=0
+let headBase=null,headDroopMax=0,faceHeightBaseline=null
+
+const L_EYE=[362,385,387,263,373,380]
+const R_EYE=[33,160,158,133,153,144]
+
+function d2(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+function ear(lm,idx){
+  const p=idx.map(i=>lm[i])
+  return(d2(p[1],p[5])+d2(p[2],p[4]))/(2*d2(p[0],p[3]))
+}
+
+function initCam(){
+  const vid=document.getElementById('video')
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showNoCam();return}
+  try{
+    faceMesh=new FaceMesh({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`})
+    faceMesh.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.5})
+    faceMesh.onResults(onFace)
+    camObj=new Camera(vid,{
+      onFrame:async()=>{if(faceMesh)await faceMesh.send({image:vid})},
+      width:640,height:480
+    })
+    camObj.start().then(()=>{
+      document.getElementById('camStatus').textContent='Camera ready. Starting in 3 seconds…'
+      setTimeout(startMon,3000)
+    }).catch(showNoCam)
+  }catch(e){showNoCam()}
+}
+
+function onFace(res){
+  const cv=document.getElementById('canvas')
+  const vid=document.getElementById('video')
+  cv.width=vid.clientWidth; cv.height=vid.clientHeight
+  const ctx=cv.getContext('2d')
+  ctx.clearRect(0,0,cv.width,cv.height)
+  if(!res.multiFaceLandmarks||!res.multiFaceLandmarks.length)return
+  const lm=res.multiFaceLandmarks[0]
+
+  // Draw eye outlines
+  ctx.strokeStyle='rgba(55,138,221,.9)';ctx.lineWidth=1.5
+  ;[L_EYE,R_EYE].forEach(idx=>{
+    ctx.beginPath()
+    const f=lm[idx[0]]
+    ctx.moveTo(f.x*cv.width,f.y*cv.height)
+    idx.slice(1).forEach(i=>ctx.lineTo(lm[i].x*cv.width,lm[i].y*cv.height))
+    ctx.closePath();ctx.stroke()
+  })
+
+  const e=(ear(lm,L_EYE)+ear(lm,R_EYE))/2
+  document.getElementById('earVal').textContent=e.toFixed(3)
+
+  if(monActive){
+    earReadings.push(e)
+
+    // PERCLOS — accumulate eyes-closed time (~16ms per frame at ~60fps)
+    if(e<BLINK_THRESHOLD) totalEyesClosedMs+=16
+
+    // Blink detection
+    const now=Date.now()
+    if(e<BLINK_THRESHOLD&&!blinkOn){blinkOn=true;blinkStartTime=now}
+    else if(e>=BLINK_THRESHOLD&&blinkOn){
+      blinkOn=false
+      const dur=now-blinkStartTime
+      if(dur>=MIN_BLINK_DURATION_MS&&dur<=800){
+        blinkCount++;blinkDurations.push(dur)
+        document.getElementById('blinkDisp').textContent=blinkCount
+      }
+    }
+
+    // Head droop — nose tip drift + face height ratio
+    const ny=lm[4].y
+    const fh=lm[152].y-lm[10].y
+    if(monSec>=3&&headBase===null){headBase=ny;faceHeightBaseline=fh}
+    if(headBase!==null){
+      const drift=ny-headBase
+      if(drift>headDroopMax)headDroopMax=drift
+      const ratio=fh/faceHeightBaseline
+      const drooping=drift>0.05||ratio<0.93
+      const el=document.getElementById('headStatus')
+      if(el){el.textContent=drooping?'HEAD DROOPING':'UPRIGHT';el.className='head-ind '+(drooping?'drooping':'upright')}
+    } else if(monSec<3){
+      const el=document.getElementById('headStatus')
+      if(el){el.textContent='CALIBRATING…';el.className='head-ind calibrating'}
+    }
+  }
+}
+
+function startMon(){
+  monActive=true
+  earReadings=[];blinkCount=0;blinkOn=false;blinkStartTime=0;blinkDurations=[];totalEyesClosedMs=0
+  headBase=null;headDroopMax=0;faceHeightBaseline=null;monSec=0
+  const el=document.getElementById('headStatus')
+  if(el){el.textContent='CALIBRATING…';el.className='head-ind calibrating'}
+  document.getElementById('camStatus').textContent='Monitoring in progress…'
+  document.getElementById('blinkDisp').textContent='0'
+  monTimer=setInterval(()=>{
+    monSec++
+    const rem=30-monSec
+    const pct=monSec/30
+    document.getElementById('timerArc').setAttribute('stroke-dashoffset',String(289*pct))
+    document.getElementById('timerTxt').textContent=rem
+    document.getElementById('monProg').style.width=(pct*100)+'%'
+    if(monSec>=30)finishMon()
+  },1000)
+}
+
+function finishMon(){
+  clearInterval(monTimer);monActive=false
+  if(camObj){try{camObj.stop()}catch(e){}}
+
+  const totalMonitoringMs=30000
+  const avgEAR=avg(earReadings)||0.28
+  const blinkRatePerMin=blinkCount*2
+  const avgBlinkMs=blinkDurations.length>0?avg(blinkDurations):150
+  const perclos=(totalEyesClosedMs/totalMonitoringMs)*100
+
+  // EAR score: normal >0.25, drowsy <0.20
+  const ear_score=clamp(((0.28-avgEAR)/0.10)*100)
+  // Blink rate score: normal 15-20/min; drowsy <12/min
+  const blink_rate_score=clamp(((12-blinkRatePerMin)/8)*100)
+  // Blink duration score: normal 100-150ms; sluggish >300ms
+  const blink_duration_score=clamp(((avgBlinkMs-150)/250)*100)
+  // PERCLOS score: normal ~10%; drowsy >15-20%
+  const perclos_score=clamp(((perclos-10)/15)*100)
+  // Head droop score: significant at 10% of frame height
+  const head_droop_score=clamp((headDroopMax/0.10)*100)
+
+  S.drowsiness_score=
+    ear_score*0.30+
+    blink_rate_score*0.25+
+    blink_duration_score*0.15+
+    perclos_score*0.20+
+    head_droop_score*0.10
+
+  console.log('Drowsiness analysis:',{
+    avgEAR:avgEAR.toFixed(3),
+    blinkCount,blinkRatePerMin,
+    avgBlinkMs:Math.round(avgBlinkMs),
+    perclos:perclos.toFixed(1)+'%',
+    headDroopMax:(headDroopMax*100).toFixed(1)+'% of frame',
+    finalScore:S.drowsiness_score.toFixed(1)
+  })
+
+  document.getElementById('camStatus').style.display='none'
+  document.getElementById('camDone').style.display='block'
+  document.getElementById('p2next').disabled=false
+}
+
+function showNoCam(){
+  document.getElementById('camCard').style.display='none'
+  document.getElementById('noCamCard').style.display='block'
+}
+function skipDrowsy(){S.drowsiness_score=PRESET.drowsiness_score;goP3()}
+function goP3(){showPage(3)}
+
+// ── PAGE 3 ────────────────────────────────────────────────────────────
+let mediaRecorder=null,audioChunks=[],audioBlob=null,waveInt=null,recInt=null
+let audioContext=null,analyser=null,microphone=null,dataArray=null
+let peakCount=0,lastPeakTime=0,peakInterval=null
+
+function getLocalAssessment(ratePerSecond){
+  if(ratePerSecond>=6)return'Normal diadochokinetic rate indicating intact cerebellar motor function.'
+  if(ratePerSecond>=5)return'Slightly reduced rate suggesting mild speech motor slowing.'
+  if(ratePerSecond>=4)return'Mildly reduced rate consistent with early motor speech impairment.'
+  if(ratePerSecond>=2)return'Significantly reduced rate suggesting moderate cerebellar depression.'
+  return'Severely reduced rate indicating significant speech motor impairment.'
+}
+
+function initWave(){
+  const wf=document.getElementById('waveform');wf.innerHTML=''
+  for(let i=0;i<36;i++){const b=document.createElement('div');b.className='wbar';b.style.height='6px';wf.appendChild(b)}
+}
+function stopWave(){if(waveInt)clearInterval(waveInt);document.querySelectorAll('.wbar').forEach(b=>b.style.height='6px')}
+
+async function startPt(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    document.getElementById('ptIdle').style.display='none'
+    document.getElementById('noMicCard').style.display='block'
+    return
+  }
+  // Confirm mic permission before starting countdown
+  try{
+    const testStream=await navigator.mediaDevices.getUserMedia({audio:true})
+    testStream.getTracks().forEach(t=>t.stop())
+    console.log('Mic permission confirmed')
+  }catch(err){
+    console.error('Mic permission denied:',err.name,err.message)
+    document.getElementById('ptIdle').style.display='none'
+    document.getElementById('noMicCard').style.display='block'
+    return
+  }
+  document.getElementById('ptIdle').style.display='none'
+  document.getElementById('ptCountdown').style.display='block'
+  let c=3;document.getElementById('ptNum').textContent=c
+  const ci=setInterval(()=>{
+    c--;if(c>0){document.getElementById('ptNum').textContent=c}
+    else{clearInterval(ci);document.getElementById('ptCountdown').style.display='none';beginRec()}
+  },1000)
+}
+
+async function beginRec(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true})
+
+    // Clone stream — one for MediaRecorder, one for Web Audio API
+    // Fixes Chrome bug where MediaRecorder blocks Web Audio analyser
+    const analyserStream=stream.clone()
+
+    audioContext=new AudioContext()
+    await audioContext.resume()
+
+    analyser=audioContext.createAnalyser()
+    analyser.fftSize=2048
+    analyser.smoothingTimeConstant=0
+    microphone=audioContext.createMediaStreamSource(analyserStream)
+    microphone.connect(analyser)
+
+    // Float32Array: -1 to +1 range; no ambiguous 128-as-silence issue
+    dataArray=new Float32Array(analyser.fftSize)
+
+    setTimeout(()=>{
+      analyser.getFloatTimeDomainData(dataArray)
+      const maxVal=Math.max(...dataArray.slice(0,10).map(Math.abs))
+      console.log('Float signal check, max value:',maxVal)
+    },300)
+
+    const mimeType=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm'
+    mediaRecorder=new MediaRecorder(stream,{mimeType})
+    audioChunks=[]
+    mediaRecorder.ondataavailable=e=>{if(e.data&&e.data.size>0)audioChunks.push(e.data)}
+    mediaRecorder.onstop=()=>{
+      if(audioChunks.length>0){
+        audioBlob=new Blob(audioChunks,{type:mimeType})
+        const url=URL.createObjectURL(audioBlob)
+        document.getElementById('audioPlayer').src=url
+        document.getElementById('audioPlayer').style.display='block'
+      }
+    }
+    mediaRecorder.start(100)
+
+    peakCount=0;lastPeakTime=0
+    const THRESHOLD=0.02,MIN_PEAK_GAP_MS=150
+
+    initWave()
+    document.getElementById('ptRec').style.display='block'
+    document.getElementById('peakDisp').textContent='0'
+    let elapsed=0
+    recInt=setInterval(()=>{elapsed+=100;document.getElementById('recProg').style.width=(elapsed/15000*100)+'%'},100)
+
+    peakInterval=setInterval(()=>{
+      analyser.getFloatTimeDomainData(dataArray)
+      let sum=0
+      for(let i=0;i<dataArray.length;i++)sum+=dataArray[i]*dataArray[i]
+      const rms=Math.sqrt(sum/dataArray.length)
+      const rmsEl=document.getElementById('rmsDisp')
+      if(rmsEl)rmsEl.textContent=rms.toFixed(4)
+      const now=Date.now()
+      if(rms>THRESHOLD&&(now-lastPeakTime)>MIN_PEAK_GAP_MS){
+        peakCount++;lastPeakTime=now
+        const peakEl=document.getElementById('peakDisp')
+        if(peakEl)peakEl.textContent=peakCount
+        document.querySelectorAll('.wbar').forEach(b=>b.style.height=(20+rms*200)+'px')
+      }
+    },20)
+
+    setTimeout(()=>{
+      clearInterval(peakInterval);clearInterval(recInt);stopWave()
+      if(mediaRecorder&&mediaRecorder.state==='recording')mediaRecorder.stop()
+      stream.getTracks().forEach(t=>t.stop())
+      analyserStream.getTracks().forEach(t=>t.stop())
+      audioContext.close()
+      document.getElementById('ptRec').style.display='none'
+      console.log('Final peakCount:',peakCount)
+      const cycleRate=peakCount/15
+      const overallScore=Math.min(100,Math.round((cycleRate/6)*100))
+      S.pataka_score=100-overallScore
+      showPtResult({pataka_count:peakCount,rate_per_second:parseFloat(cycleRate.toFixed(2)),overall_score:overallScore,assessment:getLocalAssessment(cycleRate)})
+    },15000)
+
+  }catch(err){
+    console.error('beginRec error:',err.name,err.message)
+    showRetry('Microphone error: '+err.message)
+  }
+}
+
+function showRetry(message){
+  document.getElementById('ptRec').style.display='none'
+  document.getElementById('ptCountdown').style.display='none'
+  document.getElementById('ptResult').style.display='none'
+  document.getElementById('retryMsg').textContent=message
+  document.getElementById('retryCard').style.display='block'
+}
+
+function retryPt(){
+  document.getElementById('retryCard').style.display='none'
+  document.getElementById('ptIdle').style.display='block'
+  document.getElementById('audioPlayer').style.display='none'
+  document.getElementById('audioPlayer').src=''
+  audioChunks=[];audioBlob=null
+  if(mediaRecorder&&mediaRecorder.state!=='inactive'){try{mediaRecorder.stop()}catch(e){}}
+}
+
+function showPtResult(r){
+  document.getElementById('ptRate').textContent=typeof r.rate_per_second==='number'?r.rate_per_second.toFixed(2)+' cycles/sec':r.rate_per_second
+  document.getElementById('ptClarity').textContent=typeof r.overall_score==='number'?r.overall_score+' / 100':'—'
+  document.getElementById('ptAssess').textContent=r.assessment
+  document.getElementById('ptResult').style.display='block'
+}
+function skipPt(){S.pataka_score=PRESET.pataka_score;goP4()}
+function goP4(){showPage(4);initStroop()}
+
+// ── PAGE 4 ────────────────────────────────────────────────────────────
+const WORDS=['RED','GREEN','BLUE']
+const COLS={RED:'#E24B4A',GREEN:'#1D9E75',BLUE:'#378ADD'}
+const KMAP={r:'RED',g:'GREEN',b:'BLUE'}
+let stTrials=[],stIdx=0,stT0,stTimeout,stCorrect=0,stTimes=[],stActive=false,trialActive=false,barAnim
+
+function genTrial(){
+  const w=WORDS[Math.floor(Math.random()*3)]
+  const opts=WORDS.filter(c=>c!==w)
+  const c=opts[Math.floor(Math.random()*2)]
+  return{word:w,color:c}
+}
+
+function initStroop(){
+  stTrials=[];for(let i=0;i<20;i++)stTrials.push(genTrial())
+  stIdx=0;stCorrect=0;stTimes=[];stActive=false;trialActive=false
+  let cd=5;document.getElementById('stCD').textContent=cd
+  const ci=setInterval(()=>{cd--;document.getElementById('stCD').textContent=cd;if(cd<=0){clearInterval(ci);beginStroop()}},1000)
+}
+
+function beginStroop(){
+  document.getElementById('stInstr').style.display='none'
+  document.getElementById('stTrial').style.display='block'
+  stActive=true
+  document.addEventListener('keydown',handleKey)
+  showTrial()
+}
+
+function showTrial(){
+  if(stIdx>=20){finishStroop();return}
+  const t=stTrials[stIdx]
+  const w=document.getElementById('stWord')
+  w.style.visibility='hidden'
+  void w.offsetHeight
+  w.textContent=t.word
+  w.style.color=COLS[t.color]
+  w.style.visibility='visible'
+  document.getElementById('trialNum').textContent=stIdx+1
+  stT0=Date.now()
+  trialActive=true
+  const bar=document.getElementById('trialBar')
+  bar.style.transition='none';bar.style.width='100%'
+  void bar.offsetHeight
+  setTimeout(()=>{bar.style.transition='width 3s linear';bar.style.width='0%'},20)
+  stTimeout=setTimeout(()=>recResp(null),3000)
+}
+
+function handleKey(e){
+  if(!stActive||!trialActive)return
+  const k=e.key.toLowerCase()
+  if(KMAP[k])recResp(k)
+}
+
+function recResp(key){
+  if(!stActive||!trialActive)return
+  trialActive=false
+  document.removeEventListener('keydown',handleKey)
+  clearTimeout(stTimeout)
+  const rt=Date.now()-stT0
+  const ok=key&&KMAP[key]===stTrials[stIdx].color
+  if(ok){stCorrect++;stTimes.push(rt)}
+  flashFeedback(ok)
+  stIdx++
+  setTimeout(()=>{
+    document.addEventListener('keydown',handleKey)
+    showTrial()
+  },400)
+}
+
+function flashFeedback(ok){
+  const el=document.getElementById('stroopFeedback')
+  el.style.backgroundColor=ok?'rgba(29,158,117,.18)':'rgba(226,75,74,.18)'
+  el.style.opacity='1'
+  setTimeout(()=>el.style.opacity='0',280)
+}
+
+function finishStroop(){
+  stActive=false;trialActive=false
+  document.removeEventListener('keydown',handleKey)
+  const ams=avg(stTimes)||1500
+  const acc_s=clamp((20-stCorrect)/20*100)
+  const spd_s=clamp((ams-800)/700*100)
+  S.stroop_score=acc_s*.60+spd_s*.40
+  document.getElementById('stTrial').style.display='none'
+  document.getElementById('stCorrect').textContent=stCorrect+' / 20'
+  document.getElementById('stAvgMs').textContent=Math.round(ams)+' ms'
+  document.getElementById('stAcc').textContent=Math.round(stCorrect/20*100)+'%'
+  document.getElementById('stSummary').style.display='block'
+}
+
+function goP5(){
+  S.final_risk=S.symptom_score*.20+S.drowsiness_score*.20+S.pataka_score*.35+S.stroop_score*.25
+  showPage(5);renderResults()
+}
+
+// ── PAGE 5 ────────────────────────────────────────────────────────────
+function riskLevel(s){
+  if(s<25)return{level:'NORMAL',color:'#1D9E75',message:'No immediate concern detected. Continue routine monitoring.'}
+  if(s<45)return{level:'MILD CONCERN',color:'#EF9F27',message:'Mild indicators present. Monitor closely and retest in 30 minutes.'}
+  if(s<70)return{level:'ELEVATED',color:'#FAC775',message:'Elevated risk detected. Clinical assessment is recommended.'}
+  return{level:'HIGH RISK',color:'#E24B4A',message:'High risk indicators detected. Seek medical attention immediately.'}
+}
+function barColor(s){if(s<25)return'#1D9E75';if(s<45)return'#EF9F27';if(s<70)return'#FAC775';return'#E24B4A'}
+
+function setBar(barId,lblId,score){
+  const s=Math.round(score)
+  setTimeout(()=>{
+    document.getElementById(barId).style.width=s+'%'
+    document.getElementById(barId).style.background=barColor(s)
+    document.getElementById(lblId).textContent=s+'/100'
+  },120)
+}
+
+function renderResults(){
+  document.getElementById('patDisp').textContent='Results for '+S.patient_name
+  setBar('bar1','lbl1',S.symptom_score)
+  setBar('bar2','lbl2',S.drowsiness_score)
+  setBar('bar3','lbl3',S.pataka_score)
+  setBar('bar4','lbl4',S.stroop_score)
+  const rs=Math.round(S.final_risk)
+  const risk=riskLevel(rs)
+  // Gauge: semi-circle path length ≈ 283, fill from 0 score=empty to 100 score=full
+  setTimeout(()=>{
+    const arc=document.getElementById('gaugeArc')
+    arc.setAttribute('stroke',risk.color)
+    arc.style.transition='stroke-dashoffset 1.2s ease'
+    arc.setAttribute('stroke-dashoffset',String(283-(283*rs/100)))
+    document.getElementById('gaugeNum').textContent=rs
+    document.getElementById('riskLvl').textContent=risk.level
+    document.getElementById('riskLvl').style.color=risk.color
+    document.getElementById('riskMsg').textContent=risk.message
+  },150)
+}
+
+function doExport(){
+  const risk=riskLevel(S.final_risk)
+  const rows=[
+    ['Field','Value'],
+    ['Timestamp',new Date().toISOString()],
+    ['Patient Name',S.patient_name],
+    ['Symptom Score',S.symptom_score.toFixed(1)],
+    ['Drowsiness Score',S.drowsiness_score.toFixed(1)],
+    ['Speech Score',S.pataka_score.toFixed(1)],
+    ['Stroop Score',S.stroop_score.toFixed(1)],
+    ['Final Risk Score',S.final_risk.toFixed(1)],
+    ['Risk Level',risk.level]
+  ]
+  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n')
+  const a=document.createElement('a')
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}))
+  a.download='hypercapnia_'+Date.now()+'.csv'
+  a.click()
+}
+
+function resetApp(){
+  if(camObj){try{camObj.stop()}catch(e){}}
+  if(mediaRecorder&&mediaRecorder.state!=='inactive'){try{mediaRecorder.stop()}catch(e){}}
+  if(audioContext){try{audioContext.close()}catch(e){}}
+  if(peakInterval)clearInterval(peakInterval)
+  camObj=null;mediaRecorder=null;audioContext=null
+  S={symptom_score:0,drowsiness_score:0,pataka_score:0,stroop_score:0,final_risk:0,patient_name:''}
+  // Reset P1
+  document.getElementById('patName').value=''
+  document.querySelectorAll('input[type="radio"]').forEach(r=>r.checked=false)
+  document.getElementById('p1next').disabled=true
+  // Reset P2
+  document.getElementById('camCard').style.display='block'
+  document.getElementById('noCamCard').style.display='none'
+  document.getElementById('camDone').style.display='none'
+  document.getElementById('camStatus').style.display='block'
+  document.getElementById('camStatus').textContent='Initializing camera…'
+  document.getElementById('p2next').disabled=true
+  document.getElementById('timerTxt').textContent='30'
+  document.getElementById('timerArc').setAttribute('stroke-dashoffset','0')
+  document.getElementById('monProg').style.width='0%'
+  document.getElementById('earVal').textContent='—'
+  document.getElementById('blinkDisp').textContent='0'
+  const hs=document.getElementById('headStatus');if(hs){hs.textContent='WAITING';hs.className='head-ind calibrating'}
+  // Reset P3
+  document.getElementById('ptIdle').style.display='block'
+  document.getElementById('ptCountdown').style.display='none'
+  document.getElementById('ptRec').style.display='none'
+  document.getElementById('ptAnalyzing').style.display='none'
+  document.getElementById('ptResult').style.display='none'
+  document.getElementById('noMicCard').style.display='none'
+  document.getElementById('retryCard').style.display='none'
+  const ap=document.getElementById('audioPlayer');ap.src='';ap.style.display='none'
+  audioChunks=[];audioBlob=null
+  // Reset P4
+  document.getElementById('stInstr').style.display='block'
+  document.getElementById('stTrial').style.display='none'
+  document.getElementById('stSummary').style.display='none'
+  showPage(1)
+}
+</script>
+</body>
+</html>
