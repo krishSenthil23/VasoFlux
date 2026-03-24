@@ -1,5 +1,8 @@
+
 # VasoFlux
-A web-based cognitive monitoring platform that uses eye-tracking and validated psychological assessments to detect early cognitive decline associated with hypercapnia in COPD patients.
+<img width="1200" height="1600" alt="image" src="https://github.com/user-attachments/assets/fde083a7-16f4-4807-ac6e-b0e02d06e0ef" />
+
+A web-based cognitive monitoring platform paired with a physical prototype for non-invasive, low-cost CO₂ monitoring via transcutaneous diffusion. The prototype was built using Arduino and detects CO₂ levels through diffused gas captured at the skin surface. The platform uses eye-tracking and validated psychological assessments to identify early cognitive decline associated with hypercapnia in COPD patients.
 
 # Hypercapnia Early Detection — Cognitive Screening Tools
 
